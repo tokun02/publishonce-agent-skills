@@ -1,94 +1,86 @@
 # PublishOnce — Agent Skills
 
-AI エージェント（Claude Code など）から、**動画を、YouTube・TikTok・Instagram・Facebook・LinkedIn へ、まとめて投稿・予約投稿**するためのスキルです。[PublishOnce](https://publishonce.app) の公開 API を、ゼロ依存の CLI（`scripts/publishonce.js`）で呼び出します。
+**English** · [日本語](./README.ja.md) · [Español](./README.es.md) · [简体中文](./README.zh.md) · [한국어](./README.ko.md) · [Português](./README.pt.md) · [Français](./README.fr.md) · [Deutsch](./README.de.md)
 
-> **いまの対応範囲**: 動画の投稿のみです。テキストだけ・画像だけの投稿、X・Threads・Pinterest・Bluesky は、まだ対応していません（順次、対応予定）。Instagram・Facebook・TikTok・YouTube の各社の審査の状況で、使える範囲が変わります。
+A skill that lets AI agents (Claude Code and others) **post and schedule videos to YouTube, TikTok, Instagram, Facebook and LinkedIn in one go**. It calls the public API of [PublishOnce](https://publishonce.app) through a zero-dependency CLI (`scripts/publishonce.js`).
 
-## インストール
+> **Current scope**: video posts only. Text-only and image-only posts, and X, Threads, Pinterest and Bluesky, are not supported yet (planned). What is available on each network depends on that network's own API review.
 
-推奨: [skills CLI](https://www.npmjs.com/package/skills) を使います。
+## Install
+
+Recommended: use the [skills CLI](https://www.npmjs.com/package/skills).
 
 ```bash
 npx skills add tokun02/publishonce-agent-skills
 ```
 
-エージェントを指定する場合は、`-a claude-code` のように付けます。
+Add `-a claude-code` (for example) to target one agent.
 
-### 手動でインストール
+### Manual install
 
-このリポジトリをクローンして、`skills/publishonce` を、エージェントのスキルのフォルダに置きます（例: Claude Code）。
+Clone this repository and put `skills/publishonce` in your agent's skills folder (example: Claude Code).
 
 ```bash
 git clone https://github.com/tokun02/publishonce-agent-skills.git
 ln -s "$(pwd)/publishonce-agent-skills/skills/publishonce" ~/.claude/skills/publishonce
 ```
 
-シェルのコマンドを実行できるエージェントなら、`skills/publishonce/SKILL.md` を読ませて、`scripts/publishonce.js` を実行させるだけで使えます。
+Any agent that can run shell commands can use it: have it read `skills/publishonce/SKILL.md` and run `scripts/publishonce.js`.
 
-## セットアップ
+## Setup
 
-1. [publishonce.app](https://publishonce.app) でアカウントを作り、投稿したい SNS を連携します。
-2. [設定 → API キー](https://publishonce.app/settings/api) で、API キーを発行します（`po_live_…` は本番、`po_test_…` は試験用で、何も投稿されません）。
-3. エージェントに、キーを保存するよう頼むか、次を実行します。
+1. Create an account at [publishonce.app](https://publishonce.app) and connect the networks you want to post to.
+2. Create an API key in [Settings → API keys](https://publishonce.app/settings/api) (`po_live_…` is real; `po_test_…` is for testing and posts nothing).
+3. Ask the agent to save the key, or run:
 
 ```bash
 ./skills/publishonce/scripts/publishonce.js setup --key po_live_xxxxxxxx --global
 ```
 
-キーは、`~/.config/publishonce/config.json` に保存されます（環境変数 `PUBLISHONCE_API_KEY` でも指定できます）。キーを、チャットやコミットに貼らないでください。
+The key is stored in `~/.config/publishonce/config.json` (or set the environment variable `PUBLISHONCE_API_KEY`). Never paste the key into a chat or a commit.
 
-## できること
+## What it can do
 
-- 動画のアップロードと、複数の SNS への**一括投稿**
-- **予約投稿**（30日先まで）
-- PublishOnce の中の**下書き**の保存と、あとからの投稿
-- **TikTok アプリの下書き**・**Facebook ページの下書き**への送信
-- 投稿の状況・公開 URL の確認
-- SNS ごとのキャプション、TikTok の公開範囲、YouTube の子ども向けの申告、AI 生成のラベル
+- Upload a video and **post it to several networks at once**
+- **Schedule** posts (up to 30 days ahead)
+- Save a **draft** inside PublishOnce and post it later
+- Send a video to the **TikTok app drafts** or a **Facebook Page draft**
+- Check post status and public URLs
+- Per-network captions, TikTok privacy level, YouTube "made for kids" declaration, AI-generated labels
 
-## 使い方
+## Usage
 
-エージェントに、自然な言葉で頼みます。
+Just ask the agent in plain language, in any language.
 
-> この動画を、YouTube と TikTok に、明日の18時に予約投稿して。キャプションは「新商品のご紹介です」。
+> Schedule this video for tomorrow at 6pm on YouTube and TikTok. The caption is "Meet our new product".
 
-エージェントは、投稿先のアカウントと内容を確認して、**あなたが承認してから**、投稿します（承認なしに、投稿しません）。
+The agent confirms the accounts and the content, and posts **only after you approve** (it never posts without approval).
 
-## 対応プラットフォーム
+## Supported networks
 
-| SNS | 動画 | 備考 |
+| Network | Video | Notes |
 |---|---|---|
-| YouTube | ○（ショート） | YouTube の API の審査が終わるまでは、API から投稿した動画は、非公開になります |
-| TikTok | ○ | 公開範囲の指定が必須。アプリの下書きにも送れます |
-| Instagram | ○（リール） | 公開のみ |
-| Facebook | ○（ページの動画） | 公開のみ。ページの下書きにも保存できます |
-| LinkedIn | ○ | 公開のみ |
+| YouTube | yes (Shorts) | Until YouTube's API review is finished, videos posted through the API are private |
+| TikTok | yes | A privacy level is required. Can also send to the app drafts |
+| Instagram | yes (Reels) | Public only |
+| Facebook | yes (Page video) | Public only. Can also save a Page draft |
+| LinkedIn | yes | Public only |
 
-## 必要なもの
+## Requirements
 
-- Node.js 18 以上
-- シェルのコマンドを実行できるエージェント
-- PublishOnce のアカウントと API キー
+- Node.js 18 or later
+- An agent that can run shell commands
+- A PublishOnce account and an API key
 
-## API・MCP
+## API and MCP
 
-- 公開ドキュメント: https://publishonce.app/docs
-- REST API（`/api/v1`）と、MCP サーバーの案内は、公開ドキュメントを参照してください。
+- Public documentation: https://publishonce.app/docs
+- See it for the REST API (`/api/v1`) and the MCP server.
 
-## リンク
+## Links
 
-- サービス: https://publishonce.app
-- お問い合わせ: publishonce.app@gmail.com
-- ライセンス: [MIT](./LICENSE)
+- Service: https://publishonce.app
+- Contact: publishonce.app@gmail.com
+- License: [MIT](./LICENSE)
 
----
-
-## English (summary)
-
-**PublishOnce — Agent Skills** lets AI agents (Claude Code and others) post and schedule **videos** to YouTube, TikTok, Instagram, Facebook and LinkedIn through the [PublishOnce](https://publishonce.app) public API, using a zero-dependency Node.js CLI.
-
-- Install: `npx skills add tokun02/publishonce-agent-skills`
-- Setup: create an API key at https://publishonce.app/settings/api, then `./skills/publishonce/scripts/publishonce.js setup --key po_live_xxx --global`
-- Currently video posts only (text-only and image-only posts, X, Threads, Pinterest and Bluesky are not supported yet). Availability on each network depends on that network's own API review.
-- The agent always asks you to approve the final plan (content, accounts, schedule) before posting.
-- Docs: https://publishonce.app/docs · License: MIT
+> The translations of this README were prepared with machine assistance and have not been reviewed by native speakers. The English and Japanese versions are the reference.
