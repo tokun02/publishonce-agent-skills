@@ -1,216 +1,141 @@
-<!-- 日本語版（参考）。エージェントが読むのは SKILL.md（英語）です。内容は SKILL.md と同じに保つこと。最終更新: 2026-10-10 -->
+<!-- 日本語版（参考）。エージェントが優先して読むのは SKILL.md（英語）です。内容は SKILL.md と同じに保っています。最終更新: 2026-11-20 -->
 
-# PublishOnce: 動画を複数のSNSへまとめて投稿
+# PublishOnce エージェントスキル
 
-PublishOnce（https://publishonce.app）の公開 API を、CLI（`./scripts/publishonce.js`）から使う。出力は、すべて JSON。
+PublishOnce（`https://publishonce.app`）は、AI エージェントと開発者向けの統合 SNS 投稿・予約・分析プラットフォームです。**LINE 公式アカウント** へのネイティブ対応をはじめ、**YouTube Shorts・TikTok・LinkedIn・Bluesky・Pinterest・X (Twitter)・Mastodon・WordPress・Telegram・Discord・Slack**、および審査中の **Instagram・Facebook・Threads・Google ビジネス プロフィール** まで **全16プラットフォーム** に動画・画像・テキストを一括配信できます。
 
-## 対応状況（正直な一覧）
+## 主な機能
+1. **マルチプラットフォーム一括配信（`video` / `image` / `text`）**: 動画・画像・テキストを最大16SNSへ同時に下書き・予約・公開。
+2. **安全な下書きデフォルト（`publish_mode`）**: 既定値は `"draft"`（各SNSの下書き・非公開・コンテナ保留として安全に入稿）。本番公開するときのみ `"direct"` を明示します。
+3. **SNSごとの文面・タイトル最適化（`caption_overrides` / `title_overrides`）**: 1回のリクエストで、X 向けの短文、YouTube 向けの検索タイトル・説明文、Instagram 向けのハッシュタグ等を出し分け可能。
+4. **アルゴリズム対策のファーストコメント（`first_comment` / `follow_ups`）**: 本文に外部 URL を入れず、公開直後の1件目コメント（および最大4件の続きスレッド）へ自動で URL を逃がせます。
+5. **事前バリデーション（`validate_post` / `validate_video`）**: 投稿前に文字数・動画尺・アスペクト比・ファイルサイズ上限をチェック。
+6. **最適スロット検索（`find_next_slot`）**: 連携アカウント全体の空き予約枠を自動取得。
+7. **分析・エンゲージメント・承認リンク**: インサイト取得、コメント閲覧・返信・非表示、外部確認用リンク（`create_review_link`）の発行。
 
-| SNS | 動画 | 備考 |
-|---|---|---|
-| YouTube | ○（ショート） | **YouTube の API の審査が終わるまでは、API から投稿した動画は、YouTube の仕様で、すべて「非公開」になる**。公開範囲を選んでも同じ |
-| TikTok | ○ | 公開範囲の指定が必須。アプリの下書き（受信箱）にも送れる |
-| Instagram | ○（リール） | 公開のみ。Meta の審査の状況で、使える範囲が変わる |
-| Facebook | ○（ページの動画） | 公開のみ。ページの下書きにも保存できる。Meta の審査の状況で、使える範囲が変わる |
-| LinkedIn | ○ | 公開のみ |
+---
 
-**テキストだけ・画像だけの投稿は、まだできない。** X・Threads・Pinterest・Bluesky も、まだ対応していない。依頼されたら、できないと伝える。
+## 3つの利用方法
 
-## 「下書き」と言われたら（意味を確かめる）
+| 方法 | 向いている用途 | 入口 |
+| :--- | :--- | :--- |
+| **1. Hosted MCP サーバー** | AI エージェント（Claude / Cursor / Antigravity 等） | `list_connected_accounts`, `validate_post`, `publish_*` |
+| **2. REST API（`/api/v1`）** | 自社アプリ・ComfyUI ノード・スクリプト・n8n | `https://publishonce.app/api/v1`（`Bearer po_live_...`） |
+| **3. 付属 CLI（ゼロ依存）** | ターミナル・ローカルスクリプト（Node.js 18+） | `./scripts/publishonce.js`（すべて JSON 出力） |
 
-「下書き」には、4つの意味がある。**あいまいなときは、必ず、ユーザーに聞く。**
+API キーは `https://publishonce.app/settings/api` で発行できます：
+- `po_live_...`: 本番キー（実際に下書き作成・投稿を実行）
+- `po_test_...`: テストキー（SNS へは送らず成功レスポンスのみ返す）
+- **API キーを画面・ログ・チャットへ絶対に出力しないこと。**
 
-1. **PublishOnce の中の下書き**（`draft: true`）: SNS には、何も送らない。最後の更新から14日で自動削除。`posts publish` で、あとから投稿・予約に進める。プランごとに、保存できる件数・容量の上限がある。
-2. **TikTok アプリの下書き**（`platform_options.tiktok.send_as_draft: true`）: TikTok アプリの受信箱に届く。公開範囲・キャプションは、TikTok アプリで選ぶ。**公開URLは得られない。24時間に5件まで。** 初回は、PublishOnce の設定画面で、TikTok の「下書き送信を有効にする（再連携）」が必要。
-3. **Facebook ページの下書き**（`platform_options.facebook.send_as_draft: true`）: ページの未公開の下書きとして保存される。公開は、Facebook 側で行う。公開URLは得られない。
-4. **予約投稿**（`schedule_at`）: 指定の時刻に、PublishOnce が投稿する。下書きではない。
+---
 
-**YouTube・Instagram・LinkedIn には、SNS 側の下書きの仕組みがない。**（1 の PublishOnce の中の下書きか、予約を使う。）
+## エージェントの標準ワークフロー（MCP）
 
-## スキルの更新の確認
+```mermaid
+flowchart TD
+    A[1. list_connected_accounts] --> B[2. 連携済みSNS・状態を確認]
+    B --> C[3. validate_post]
+    C -->|エラーあり| D[文面・メディアを調整]
+    D --> C
+    C -->|OK| E{下書き・予約・即時公開?}
+    E -->|予約| F[4. find_next_slot]
+    E -->|下書き / 即時| G[5. publish_video / publish_images / publish_text]
+    F --> G
+    G --> H[6. get_post_status]
+```
 
-`last-updated` が30日より前なら、「スキルが古いかもしれない」とユーザーに伝え、`npx skills add tokun02/publishonce-agent-skills` で更新できると案内する。
+1. **アカウント確認（`list_connected_accounts`）**: 連携中の `platform` と `id`（UUID）、トークン状態（`expired` の場合は再連携を案内）を確認。
+2. **事前検証（`validate_post` / `validate_video`）**: `platforms`・`text`・`media_type` を渡して制限違反がないか確認。
+3. **予約枠取得（`find_next_slot`）**: 予約投稿の場合、ISO 8601（UTC）の `scheduled_at` を取得。
+4. **作成・公開（`publish_video` / `publish_images` / `publish_text` / `publish_campaign`）**:
+   - `publish_mode`: `"draft"`（既定・推奨）または `"direct"`（本番公開）
+   - `caption_overrides`: `{ "<platform>": "<SNS別本文>" }`
+   - `title_overrides`: `{ "<platform>": "<SNS別タイトル>" }`（`youtube`, `pinterest`, `facebook`, `linkedin`）
+   - `first_comment`: 公開直後の1件目コメント（`youtube`, `instagram`, `facebook`, `threads`, `bluesky`, `x`）
+   - `follow_ups`: 追加スレッド最大4件（`instagram`, `facebook`, `threads`, `bluesky`）
+5. **結果確認（`get_post_status`）**: `post_id` から各 SNS のステータス（`published` / `scheduled` / `draft` / `failed`）と公開 URL を確認。
 
-## セットアップ
+---
 
-1. https://publishonce.app でアカウントを作り、投稿したい SNS を連携する（設定画面）。
-2. https://publishonce.app/settings/api で、API キーを発行する。`po_live_…`（本番）と `po_test_…`（試験。**何も投稿されず、成功したように見えるだけ**）がある。
-3. キーを保存する:
-   ```bash
-   ./scripts/publishonce.js setup --key po_live_xxxxxxxx --global
-   ```
-   `--global` なしだと、現在のフォルダの `.publishonce/config.json` に保存する。環境変数 `PUBLISHONCE_API_KEY` でも指定できる。
+## REST API クイックリファレンス
 
-**キーの優先順位**: 環境変数 `PUBLISHONCE_API_KEY` > `./.publishonce/config.json` > `~/.config/publishonce/config.json`
+Base URL: `https://publishonce.app/api/v1`  
+認証ヘッダー: `Authorization: Bearer YOUR_API_KEY`
 
-**確認**: `./scripts/publishonce.js config show`（キーは、伏せて表示される。**キーを、画面やログに出さない**）
+- `GET /connections` — 連携アカウント一覧
+- `GET /platforms/capabilities` — 有効な全SNSの機能マトリクス
+- `GET /platforms/{platform}/requirements` — SNS別の動画規格・制約
+- `POST /uploads` — 動画・画像の事前アップロード
+- `POST /posts` — 下書き・即時投稿・予約投稿の作成
+- `GET /posts/{id}` — 投稿ステータス・各SNS結果の取得
 
-## CLI コマンド
-
-出力は JSON。成功は `{"ok": true, ...}`、失敗は `{"ok": false, "error": {...}}`（終了コード1）。
-
-### 連携済みのアカウント
+### 実行例：SNS別文面最適化＋ファーストコメント（REST API）
 ```bash
+curl -X POST "https://publishonce.app/api/v1/posts" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "post_type": "text",
+    "publish_mode": "draft",
+    "platforms": ["x", "linkedin", "bluesky"],
+    "caption": "複数SNSへの投稿と最適化を1か所で完結。",
+    "caption_overrides": {
+      "x": "SNSごとに毎回コピペしてませんか？各SNS向けに最適化した投稿を1回で配信できます。",
+      "bluesky": "複数SNSへの最適化配信とファーストコメントをAPIで自動化。",
+      "linkedin": "REST API / MCP によるマルチプラットフォームSNS配信の効率化。"
+    },
+    "first_comment": "詳細はこちら: https://publishonce.app"
+  }'
+```
+※ 実際に本番公開する場合のみ `"publish_mode": "direct"` を指定してください。
+
+---
+
+## 付属 CLI クイックリファレンス（`./scripts/publishonce.js`）
+
+Node.js 18+ で動くゼロ依存 CLI（JSON 出力）：
+```bash
+./scripts/publishonce.js setup --key po_live_xxxxxxxx --global
 ./scripts/publishonce.js connections [--platform youtube]
-```
-投稿の前に、必ず実行して、**どのアカウントに投稿するか**を確認する。`id` は、複数のアカウントを連携しているときの `connection_ids` に使う。`status` が `expired` なら、再連携が必要。
-
-### 動画のアップロード
-```bash
 ./scripts/publishonce.js media upload ./video.mp4
-# => { "ok": true, "data": { "video_path": "orgs/.../video.mp4", ... } }
-```
-- 形式は MP4・MOV・WEBM。長さは3分未満が目安。サイズ上限は、プランで違う（最大1GB）。Instagram は300MBまで、Facebook・LinkedIn は500MBまで。
-- 動画が、すでに公開された HTTPS の URL にあるときは、アップロードせずに、`video_url` で指定できる。
-- 返ってきた `video_path` を、投稿の作成に使う。
-
-### 投稿
-```bash
-./scripts/publishonce.js posts create --data '<JSON>'          # 投稿・予約・下書きの作成
-./scripts/publishonce.js posts create --data-file post.json    # 長いキャプションは、ファイルで渡す
-./scripts/publishonce.js posts list [--status completed] [--limit 20] [--cursor <c>]
-./scripts/publishonce.js posts get <id>
-./scripts/publishonce.js posts publish <id> [--data '{"schedule_at":"..."}']   # 下書きを、投稿・予約に進める
-./scripts/publishonce.js posts delete <id>                      # 下書きの削除（下書きだけ）
+./scripts/publishonce.js posts create --data-file post.json
+./scripts/publishonce.js posts publish <id>
+./scripts/publishonce.js posts list --limit 20
 ```
 
-## 投稿を作る
+---
 
-### 投稿の前の「承認」（必須）
+## 全16プラットフォームの公開状況・制約一覧
 
-**ユーザーが、最終の計画を、はっきり承認するまで、`posts create`（下書き以外）を実行しない。** 最終の計画は、次をすべて含む:
+### ✅ 即時利用可能（12プラットフォーム）
+| SNS | 投稿形式 | 最大文字数 | 画像上限 | 主な機能・備考 |
+|---|---|---|---|---|
+| **YouTube Shorts** | 動画 | 5,000（タイトル 100） | - | `first_comment`・サムネイル画像・成果履歴に対応 |
+| **TikTok** | 動画 | 2,200 | - | `cover_frame`（秒数指定）・TikTok下書き受信箱（`send_as_draft`）対応 |
+| **LinkedIn** | 動画・画像・テキスト | 3,000 | 20枚 | 個人プロフィール＆会社ページ・サムネイル画像・削除対応 |
+| **Bluesky** | 動画・画像・テキスト | 300 | 4枚（1MB/枚） | `first_comment`・`follow_ups`・コメント返信・インサイト・削除対応 |
+| **Pinterest** | 動画・画像 | 500（タイトル 100） | 5枚 | `board_id` 必須・サムネイル・カバー指定・削除対応 |
+| **X (Twitter)** | 動画・画像・テキスト | 280 | 4枚（5MB/枚） | 公式枠（Free: 0 / Starter: 月20 / PRO: 月40 / Enterprise: 無制限）または自前キー（BYOK）で無制限。`first_comment` 対応 |
+| **Mastodon** | 動画・画像・テキスト | 500〜 | 4枚（16MB/枚） | カスタムインスタンス・投稿削除対応 |
+| **WordPress** | 動画・画像・テキスト | 63,206 | 20枚 | REST API v2（Gutenberg ブロック投稿） |
+| **LINE公式** | 動画・画像・テキスト | 5,000 | 5枚 | 日本・アジア向けネイティブ連携＆通知カード配信 |
+| **Telegram** | 動画・画像・テキスト | 4,096 | 10枚 | チャンネル/グループへ Chat ID で配信・削除対応 |
+| **Discord** | 動画・画像・テキスト | 2,000 | 10枚 | Webhook / チャンネル配信・削除対応 |
+| **Slack** | 動画・画像・テキスト | 5,000 | 5枚 | Incoming Webhook / Block Kit 配信・通知 |
 
-- 投稿する動画（ファイル名）
-- 投稿先の SNS と、**アカウント名**
-- キャプション（全文）・タイトル
-- 今すぐか、予約か（予約なら、日時と時間帯）
-- SNS ごとの設定（TikTok の公開範囲、YouTube の子ども向けかどうか、など）
+### ⏳ 公式審査中（登録テストアカウントのみ利用可：4プラットフォーム）
+| SNS | 状態 | 投稿形式 | 最大文字数 | 主な機能 |
+|---|---|---|---|---|
+| **Instagram Reels** | Meta公式審査中 | 動画・画像 | 2,200（画像10枚） | `first_comment`・`follow_ups`・コメント返信/非表示・インサイト・サムネイル |
+| **Facebook** | Meta公式審査中 | 動画・画像・テキスト | 63,206（画像10枚） | `first_comment`・`follow_ups`・コメント返信・インサイト・削除・サムネイル |
+| **Threads** | Meta公式審査中 | 動画・画像・テキスト | 500（画像20枚） | `first_comment`・`follow_ups`・コメント返信/非表示・インサイト・削除 |
+| **Google ビジネス** | Google公式審査中 | 動画・画像・テキスト | 1,500（画像10枚） | 最新情報・写真/動画の店舗投稿 |
 
-SNS の名前だけの返事、別の質問への答え、前の会話での同意は、承認とみなさない。**例外**: ユーザーが、アカウントを具体的に挙げて、「今すぐ投稿して」と言ったとき。
+---
 
-下書き（`draft: true`）の作成は、SNS に何も送らないので、承認は不要。
-
-### データの形
-
-```json
-{
-  "video_path": "orgs/.../video.mp4",
-  "caption": "全SNS共通のキャプション（最大4000字）",
-  "title": "YouTube用のタイトル（最大200字・任意）",
-  "platforms": ["youtube", "tiktok"],
-  "schedule_at": "2026-10-20T09:00:00Z",
-  "caption_overrides": { "tiktok": "TikTok用のキャプション" },
-  "connection_ids": { "youtube": "<connectionのid>" },
-  "platform_options": { },
-  "custom_id": "任意の識別子（最大100字）",
-  "draft": false
-}
-```
-
-| 項目 | 必須 | 説明 |
-|---|---|---|
-| `video_path` または `video_url` | ○（どちらか一方） | アップロードした動画のパス、または、公開された HTTPS の URL |
-| `caption` | ○（下書きでは、空でもよい） | 全 SNS 共通。最大4000字 |
-| `platforms` | ○（下書きでは、空でもよい） | `youtube` `tiktok` `instagram` `facebook` `linkedin` |
-| `title` | 任意 | YouTube のタイトル。省略すると、キャプションの先頭 |
-| `schedule_at` | 任意 | ISO 8601（UTC）。**いまから2分より先、30日より前**。省略すると、すぐ投稿。下書きでは、指定できない |
-| `caption_overrides` | 任意 | SNS ごとのキャプション |
-| `connection_ids` | 任意 | 同じ SNS に、複数のアカウントを連携しているとき、アカウントを指定する |
-| `platform_options` | TikTok は必須 | 下の「SNS ごとの設定」 |
-| `draft` | 任意 | `true` で、PublishOnce の中の下書きとして保存 |
-
-### SNS ごとの設定（`platform_options`）
-
-**TikTok（TikTok へ投稿するときは、必須）**
-- `privacy_level`（**既定値はない。ユーザーに聞く**）: `PUBLIC_TO_EVERYONE`（全員）／`MUTUAL_FOLLOW_FRIENDS`（友達）／`FOLLOWER_OF_CREATOR`（フォロワー）／`SELF_ONLY`（自分のみ）。**非公開アカウントでは、「全員」は選べない**（`SELF_ONLY` など）。TikTok の審査の状況で、「全員」でも、実際には公開されないことがある。
-- `allow_comment` / `allow_duet` / `allow_stitch`: 既定は、すべてオフ（`false`）。
-- `commercial_content`: 商用コンテンツの開示。`true` のときは、`brand_organic`（自分のブランド）か `brand_content`（第三者のブランド）の、どちらかが必要。`brand_content` は、`SELF_ONLY` とは組み合わせられない。
-- `is_aigc`: AIで生成・加工した動画なら `true`。
-- `send_as_draft: true`: TikTok アプリの下書きに送る。**この場合、`privacy_level` などは指定しない**（同時に指定すると、エラー）。
-
-**YouTube**
-- `privacy`: `public`（既定）／`unlisted`／`private`。**YouTube の API の審査が終わるまでは、どれを選んでも、非公開になる。**
-- `made_for_kids`: 子ども向けの動画か（YouTube への申告）。**指定する。ユーザーに聞く。** 省略すると、チャンネルの既定になる。
-- `ai_generated`: AIで生成・加工した動画なら `true`。
-
-**Instagram**: `ai_generated`（AIで生成・加工した動画なら `true`）。公開範囲は選べない。
-
-**Facebook**: `send_as_draft: true` で、ページの下書きに保存する。公開範囲は選べない。
-
-### 例
-
-動画を、YouTube と TikTok に、今すぐ投稿する:
-```bash
-./scripts/publishonce.js media upload ./promo.mp4
-./scripts/publishonce.js posts create --data '{
-  "video_path": "orgs/.../video.mp4",
-  "caption": "新商品のご紹介です #新商品",
-  "title": "新商品のご紹介",
-  "platforms": ["youtube", "tiktok"],
-  "platform_options": {
-    "youtube": { "privacy": "public", "made_for_kids": false },
-    "tiktok": { "privacy_level": "PUBLIC_TO_EVERYONE" }
-  }
-}'
-```
-
-予約投稿（日時は、UTC に直す。日本時間 18:00 は、UTC 09:00）:
-```bash
-./scripts/publishonce.js posts create --data '{"video_path":"orgs/.../video.mp4","caption":"夕方の投稿","platforms":["instagram"],"schedule_at":"2026-10-20T09:00:00Z"}'
-```
-
-PublishOnce の中に、下書きとして保存する:
-```bash
-./scripts/publishonce.js posts create --data '{"video_path":"orgs/.../video.mp4","caption":"あとで決める","platforms":["youtube"],"draft":true}'
-./scripts/publishonce.js posts publish <下書きのid>      # あとで、投稿に進める（ここで初めて、投稿数に数えられる）
-```
-
-TikTok アプリの下書きに送る:
-```bash
-./scripts/publishonce.js posts create --data '{"video_path":"orgs/.../video.mp4","caption":"下書き","platforms":["tiktok"],"platform_options":{"tiktok":{"send_as_draft":true}}}'
-```
-
-## 投稿の状況の確認
-
-`posts create` の応答に、`id` がある。すぐ投稿したときは、`posts get <id>` で、各 SNS の状況を確かめる。
-
-- 投稿全体の `status`: `draft` / `scheduled` / `publishing` / `completed` / `failed` / `partial`（一部だけ成功）
-- SNS ごとの `targets[].status`: `pending` / `publishing` / `completed` / `failed`
-- 成功したら `post_url`（公開URL。TikTok・Facebook の下書き送信では、出ない）。失敗したら `error_message`
-
-`publishing` のあいだは、数秒おきに（最大で数分）確認する。**予約投稿は、時刻まで確認する必要がない。**
-
-## 取り消し・削除
-
-- **下書き**: `posts delete <id>` で消せる（アップロードした動画も消える）。
-- **予約済み・投稿済みの投稿は、API からは、取り消せない**（`not_a_draft`）。PublishOnce の画面（カレンダー）から、行うよう案内する。
-
-## 推奨の手順
-
-1. 依頼の意図を確かめる（投稿か、予約か、下書きか。「下書き」の意味）。
-2. `connections` で、投稿先のアカウントを選ぶ（アカウントが複数なら、ユーザーに聞く）。
-3. 内容を用意する（動画・キャプション・タイトル・SNS ごとの設定）。
-4. **最終の計画を、ユーザーに見せて、承認をもらう。**
-5. `media upload` で動画をアップロードする。
-6. `posts create` で投稿を作る。
-7. `posts get` で、結果を確認して、公開URL か、エラーを伝える。
-
-## 守ること
-
-- **承認なしに、投稿しない**（上の「投稿の前の承認」）。
-- **投稿するアカウントを、毎回、確認する。**
-- **TikTok の公開範囲と、YouTube の子ども向けかどうかは、推測せず、ユーザーに聞く。**
-- AIで作った動画は、`is_aigc` / `ai_generated` を `true` にするよう、ユーザーに確認する。
-- 時刻は、ユーザーの時間帯を確かめて、UTC に直す。
-- 同じ動画・同じ内容を、二重に投稿しない（失敗したときは、`posts get` で状況を見てから、やり直す）。
-- 上限に達すると、エラーになる（プランの月間枠・1日の上限は、403/402）。レート制限は、429。待ってから、やり直す。
-- 試験には `po_test_` のキーを使う（何も投稿されない）。
-- **API キーを、画面・ログ・コミットに出さない。**
-
-## 自動運用の指針
-
-自動で動かすときも、次を守る。
-- 同じ内容の繰り返し・大量の投稿をしない。各 SNS の利用規約と、PublishOnce の利用規約に従う。
-- 自動の返信・いいねの水増しは、しない。
-- 公開の前に、人の目での確認を入れる（最終の計画の承認）。
-- 失敗した投稿を、むやみに再実行しない。SNS の側で、アカウントが制限されるおそれがある。
+## 安全運用ルール（エージェント必須事項）
+1. **Connection ID を推測しない**: 必ず `list_connected_accounts` / `GET /connections` の結果を使う。
+2. **本番公開前の明示的な承認**: 既定の `publish_mode: "draft"` で安全に作成し、投稿先アカウント・本文・予約時刻の承認を得てから `"direct"` を使う。
+3. **URL は `first_comment` へ**: リーチ低下を防ぐため、`x` / `instagram` / `facebook` / `threads` / `bluesky` / `youtube` では本文に URL を書かず `first_comment` を活用する。
+4. **チーム確認には承認リンク**: 外部チェックが必要な場合は `create_review_link` で承認用 URL を発行する。
